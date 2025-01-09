@@ -2,6 +2,37 @@
 $msisdn = '';
 $email = '';
 $cname = '';
+
+function exchange($currency, $amount)
+{
+  // call this for exchange in rwf https://esicia.rw/fx/?curr=USD
+  /**
+   * {"lastmodified":"2024-06-25 10:15:04","fx":{"date":"2024-06-25","name":"USD","buy":"1,296.420742","sell":"1,322.346538","middle":"1,309.383640"}}
+   */
+  if ($currency === "RWF" || $currency === "Fr" || $currency === "Frw" || $currency === "RF") {
+    return $amount;
+  }
+  if ($currency === "Rs") {
+    $currency = "INR";
+  }
+  $ch = curl_init();
+  curl_setopt($ch, CURLOPT_URL, "https://esicia.rw/fx/?curr=$currency");
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+  $response = curl_exec($ch);
+  curl_close($ch);
+  $data = json_decode($response);
+  $rate = $data->fx->sell;
+  // parse the exchange rate
+  $rate = str_replace(',', '', $rate);
+  $rate = str_replace($currency, '', $rate);
+  $rate = str_replace(' ', '', $rate);
+  $rate = str_replace(' ', '', $rate);
+  $rate = str_replace('-', '', $rate);
+  $rate = str_replace('(', '', $rate);
+  return $amount * $rate;
+}
+
 // if post
 if ($_POST) {
   $jsonData = $_POST;
@@ -18,6 +49,8 @@ if ($_POST) {
     $postData["redirecturl"] = isset(get_option('kpay_plugin_options')['redirecturl']) ? get_option('kpay_plugin_options')['redirecturl'] : json_encode('');
     $postData["amount"] = (int) $jsonData["amount"];
     $postData["currency"] = $jsonData["curr"];
+    $postData["amount"] = exchange($jsonData["curr"], $jsonData["amount"]);
+    $postData["currency"] = "RWF";
     $postData["pmethod"] = $jsonData["payment_method"];
     $postData["cnumber"] = isset($jsonData["paymentMethodInput"]) ? $jsonData["paymentMethodInput"] : $jsonData["msisdn"];
     $postData["email"] = $jsonData["email"];
@@ -46,6 +79,7 @@ if ($_POST) {
     } else {
       $api_url = 'pay.esicia.rw';
     }
+
     $ch = curl_init("https://$api_url");
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
@@ -67,6 +101,7 @@ if ($_POST) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
     $result = curl_exec($ch);
+    $json_result = json_decode($result);
 
     $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
@@ -74,7 +109,6 @@ if ($_POST) {
       curl_close($ch);
       echo "<script>alert('$json_result->message')</script>";
     } else {
-      $json_result = json_decode($result);
       if ($jsonData["payment_method"] == "cc") {
         echo "<script>window.location.href = '$json_result->url'</script>";
       } else {
@@ -102,7 +136,7 @@ if ($_POST) {
       <label for="curr">Currency</label>
       <select class="form-control" id="curr" name="curr">
         <option value="RWF" selected>RWF</option>
-        <option value="USD">USD (Future)</option>
+        <option value="USD">USD</option>
       </select>
     </div>
   </div>
